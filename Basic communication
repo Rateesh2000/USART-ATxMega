@@ -1,0 +1,51 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+
+void USARTXInit(void)
+{
+	PORTC_DIRSET = PIN3_bm;			//set pin 3 as output pin (TX)
+	PORTC_DIRCLR = PIN2_bm;			//set pin 2 as input pin (RX)
+	USARTC0_BAUDCTRLA = 0X0C;			//set baud rate 9600
+	USARTC0_BAUDCTRLB = 0;
+	USARTC0_CTRLC = (USART_CHSIZE_8BIT_gc)|(USART_PMODE_DISABLED_gc);			//set character size and disable parity mode
+	USARTC0_CTRLB = (USART_RXEN_bm)|(USART_TXEN_bm);				//enable TX and RX pins
+}
+
+void USARTXTrans(uint8_t dat)
+{
+	while (!(USARTC0_STATUS & USART_DREIF_bm));				//wait till there is data to transmit
+	USARTC0_DATA = dat;					//transmit the data
+}
+
+uint8_t USARTXRec()
+{
+	while (!(USARTC0_STATUS & USART_RXCIF_bm));				//wait till there is data to receive
+	return USARTC0_DATA;				//receive the data
+}
+
+void main(void)
+{
+	sei();					//enable global interrupts
+	PMIC_CTRL = 0x07;		//enable high,med and low level interrupts
+	USARTXInit();			
+	
+	while (1)					//this loop is the program which goes on and the interrupts occur in between
+	{
+		USARTC0_CTRLA = 0x3C;				//enable TXC and RXC interrupts
+		_delay_ms(1000);
+		USARTXTrans('a');					
+	}
+}
+
+ISR(USARTC0_RXC_vect)				//Interrupt Service Routine for RXCINT
+{
+	uint8_t dat = USARTXRec();		//receive the data
+	USARTXTrans(dat);				//transmit back the same data
+}
+
+ISR(USARTC0_TXC_vect)				//Interrupt Service Routine for TXCINT
+{
+	USARTXTrans('X');				//marker to know that program flow entered here
+	USARTC0_CTRLA = 0x30;			//disable the TXC interrupt to avoid an infinite loop (recursive)
+}
